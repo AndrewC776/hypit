@@ -1,0 +1,22 @@
+{
+  "job_id": "20260916-tiktok-bag",
+  "mode": "clone",
+  "reference_video_url": "https://vt.tiktok.com/ZSq4QxoFV/",
+  "instruction": "Clone the reference TikTok video as closely as practical in shot order, timing, framing, camera movement, hand interaction and product-demonstration rhythm. Replace the original featured product with the user's smoky-transparent black travel/toiletry bag shown in the current ChatGPT conversation. Preserve the user's product identity and construction: translucent smoky PVC body, black piping, black zipper tracks and pulls, two main zippered compartments, black woven carry handles, side mesh pocket, rectangular proportions, and visible interior capacity. Do not turn it into an opaque handbag or change its core geometry. Keep the reference video's native aspect ratio and approximate duration unless a technical constraint requires otherwise.",
+  "product": {
+    "name": "smoky transparent black travel toiletry/cosmetic bag",
+    "reference_images": "five product images supplied in the ChatGPT conversation",
+    "must_preserve": [
+      "smoky-transparent PVC material",
+      "black piping and zipper construction",
+      "two-compartment structure",
+      "black woven handles",
+      "side mesh pocket",
+      "rectangular travel-bag proportions"
+    ]
+  },
+  "pipeline": {
+    "stage": "reference_ingest",
+    "next": "shot_analysis_then_hypit_authoring"
+  }
+}
