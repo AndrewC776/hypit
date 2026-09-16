@@ -1,0 +1,24 @@
+{
+  "job_id": "20260916-tiktok-brazil-girl",
+  "reference_video_url": "https://vt.tiktok.com/ZSq4QHF4H/",
+  "mode": "clone",
+  "instruction": "Clone the reference video's shot structure, timing, camera movement, framing, actions, environment, product handling, and edit rhythm. Replace only the female subject with a synthetic adult Brazilian woman. Preserve all other scene and product behavior unless identity replacement requires local cleanup. Keep the result natural and photorealistic, with consistent face identity across the whole clip.",
+  "identity_policy": {
+    "replace": "female_subject",
+    "target": "synthetic adult Brazilian woman",
+    "preserve": [
+      "camera_motion",
+      "shot_timing",
+      "body_motion",
+      "hand_actions",
+      "scene_geometry",
+      "product_interaction",
+      "edit_rhythm"
+    ]
+  },
+  "output": {
+    "aspect_ratio": "follow-reference",
+    "duration": "follow-reference",
+    "fps": "follow-reference"
+  }
+}
