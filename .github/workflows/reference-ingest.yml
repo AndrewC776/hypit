@@ -6,7 +6,7 @@ on:
       request_file:
         description: "Production request JSON containing reference_video_url"
         required: true
-        default: "productions/20260916-tiktok-bag/request.json"
+        default: "productions/20260916-tiktok-brazil-girl/request.json"
         type: string
   push:
     branches: [main]
@@ -24,7 +24,7 @@ concurrency:
 jobs:
   ingest:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -44,20 +44,20 @@ jobs:
           python -m pip install --disable-pip-version-check uv
           uv --version
           ffmpeg -version | head -n 1
+          docker --version
 
       - name: Resolve production request
         id: request
         shell: bash
         run: |
           set -euo pipefail
-          DEFAULT_REQUEST_FILE="productions/20260916-tiktok-bag/request.json"
+          DEFAULT_REQUEST_FILE="productions/20260916-tiktok-brazil-girl/request.json"
 
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             REQUEST_FILE="${{ inputs.request_file }}"
           else
             REQUEST_FILE="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" \
               | grep -E '^productions/.+/request\.json$' | head -n 1 || true)"
-            # A workflow-only maintenance commit should still exercise the current bootstrap request.
             if [ -z "$REQUEST_FILE" ]; then
               REQUEST_FILE="$DEFAULT_REQUEST_FILE"
             fi
@@ -77,7 +77,7 @@ jobs:
           echo "Request: $REQUEST_FILE"
           echo "Job: $JOB_ID"
 
-      - name: Download reference with Hypit's pinned yt-dlp
+      - name: Download reference with yt-dlp, then self-hosted Cobalt fallback
         shell: bash
         env:
           REFERENCE_URL: ${{ steps.request.outputs.reference_url }}
@@ -85,8 +85,8 @@ jobs:
           set -euo pipefail
           mkdir -p output/reference output/frames
 
-          # Hypit pins yt-dlp. TikTok additionally requires an impersonation backend on
-          # hosted runners; curl-cffi is overlaid at runtime without changing Hypit's lock.
+          echo "Trying Hypit's pinned yt-dlp first..."
+          set +e
           uv run --project services/yt-dlp --frozen --with "curl-cffi>=0.13.0" yt-dlp \
             --impersonate chrome \
             --no-playlist \
@@ -95,17 +95,82 @@ jobs:
             -S "res:1080" \
             -o "output/reference/reference.%(ext)s" \
             "$REFERENCE_URL"
+          YTDLP_STATUS=$?
+          set -e
 
           VIDEO="$(find output/reference -maxdepth 1 -type f \
             \( -name '*.mp4' -o -name '*.mov' -o -name '*.webm' -o -name '*.mkv' \) \
-            | head -n 1)"
+            | head -n 1 || true)"
+
           if [ -z "$VIDEO" ]; then
-            echo "yt-dlp completed but no video file was found" >&2
-            exit 1
+            echo "yt-dlp did not yield a video stream (status=$YTDLP_STATUS); starting self-hosted Cobalt fallback."
+
+            docker pull ghcr.io/imputnet/cobalt:11
+            docker run -d --rm --name hypit-cobalt \
+              -p 127.0.0.1:9000:9000 \
+              -e API_URL="http://127.0.0.1:9000/" \
+              ghcr.io/imputnet/cobalt:11
+
+            cleanup_cobalt() {
+              docker rm -f hypit-cobalt >/dev/null 2>&1 || true
+            }
+            trap cleanup_cobalt EXIT
+
+            READY=0
+            for _ in $(seq 1 45); do
+              if curl -fsS http://127.0.0.1:9000/ >/dev/null 2>&1; then
+                READY=1
+                break
+              fi
+              sleep 1
+            done
+            if [ "$READY" -ne 1 ]; then
+              echo "Cobalt did not become ready" >&2
+              docker logs hypit-cobalt || true
+              exit 1
+            fi
+
+            jq -n --arg url "$REFERENCE_URL" '{
+              url: $url,
+              videoQuality: "1080",
+              downloadMode: "auto",
+              localProcessing: "disabled",
+              allowH265: true
+            }' > output/reference/cobalt-request.json
+
+            curl -fsS \
+              -H 'Accept: application/json' \
+              -H 'Content-Type: application/json' \
+              --data-binary @output/reference/cobalt-request.json \
+              http://127.0.0.1:9000/ \
+              > output/reference/cobalt-response.json
+
+            cat output/reference/cobalt-response.json
+            COBALT_STATUS="$(jq -r '.status // empty' output/reference/cobalt-response.json)"
+            case "$COBALT_STATUS" in
+              tunnel|redirect)
+                COBALT_URL="$(jq -er '.url' output/reference/cobalt-response.json)"
+                curl -fL --retry 3 --retry-all-errors "$COBALT_URL" \
+                  -o output/reference/reference.cobalt
+                ;;
+              picker)
+                COBALT_URL="$(jq -er '[.picker[] | select(.type == "video")][0].url' output/reference/cobalt-response.json)"
+                curl -fL --retry 3 --retry-all-errors "$COBALT_URL" \
+                  -o output/reference/reference.cobalt
+                ;;
+              *)
+                echo "Cobalt did not return a downloadable video" >&2
+                docker logs hypit-cobalt || true
+                exit 1
+                ;;
+            esac
+
+            VIDEO="output/reference/reference.cobalt"
           fi
 
           if [ "$VIDEO" != "output/reference/reference.mp4" ]; then
             ffmpeg -y -i "$VIDEO" \
+              -map 0:v:0 -map 0:a? \
               -c:v libx264 -preset fast -crf 18 \
               -c:a aac -b:a 160k \
               -movflags +faststart \
