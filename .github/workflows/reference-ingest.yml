@@ -50,15 +50,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          DEFAULT_REQUEST_FILE="productions/20260916-tiktok-bag/request.json"
+
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             REQUEST_FILE="${{ inputs.request_file }}"
           else
             REQUEST_FILE="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" \
               | grep -E '^productions/.+/request\.json$' | head -n 1 || true)"
+            # A workflow-only maintenance commit should still exercise the current bootstrap request.
+            if [ -z "$REQUEST_FILE" ]; then
+              REQUEST_FILE="$DEFAULT_REQUEST_FILE"
+            fi
           fi
 
           if [ -z "$REQUEST_FILE" ] || [ ! -f "$REQUEST_FILE" ]; then
-            echo "Unable to resolve a production request file" >&2
+            echo "Unable to resolve a production request file: $REQUEST_FILE" >&2
             exit 1
           fi
 
