@@ -79,7 +79,10 @@ jobs:
           set -euo pipefail
           mkdir -p output/reference output/frames
 
-          uv run --project services/yt-dlp --frozen yt-dlp \
+          # Hypit pins yt-dlp. TikTok additionally requires an impersonation backend on
+          # hosted runners; curl-cffi is overlaid at runtime without changing Hypit's lock.
+          uv run --project services/yt-dlp --frozen --with "curl-cffi>=0.13.0" yt-dlp \
+            --impersonate chrome \
             --no-playlist \
             --write-info-json \
             --merge-output-format mp4 \
