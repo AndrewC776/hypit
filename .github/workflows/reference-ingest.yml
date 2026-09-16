@@ -1,0 +1,127 @@
+name: Hypit Reference Ingest
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_file:
+        description: "Production request JSON containing reference_video_url"
+        required: true
+        default: "productions/20260916-tiktok-bag/request.json"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - "productions/**/request.json"
+      - ".github/workflows/reference-ingest.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hypit-reference-ingest-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install FFmpeg and uv
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg jq
+          python -m pip install --disable-pip-version-check uv
+          uv --version
+          ffmpeg -version | head -n 1
+
+      - name: Resolve production request
+        id: request
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            REQUEST_FILE="${{ inputs.request_file }}"
+          else
+            REQUEST_FILE="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" \
+              | grep -E '^productions/.+/request\.json$' | head -n 1 || true)"
+          fi
+
+          if [ -z "$REQUEST_FILE" ] || [ ! -f "$REQUEST_FILE" ]; then
+            echo "Unable to resolve a production request file" >&2
+            exit 1
+          fi
+
+          JOB_ID="$(jq -er '.job_id' "$REQUEST_FILE")"
+          REFERENCE_URL="$(jq -er '.reference_video_url' "$REQUEST_FILE")"
+
+          echo "request_file=$REQUEST_FILE" >> "$GITHUB_OUTPUT"
+          echo "job_id=$JOB_ID" >> "$GITHUB_OUTPUT"
+          echo "reference_url=$REFERENCE_URL" >> "$GITHUB_OUTPUT"
+          echo "Request: $REQUEST_FILE"
+          echo "Job: $JOB_ID"
+
+      - name: Download reference with Hypit's pinned yt-dlp
+        shell: bash
+        env:
+          REFERENCE_URL: ${{ steps.request.outputs.reference_url }}
+        run: |
+          set -euo pipefail
+          mkdir -p output/reference output/frames
+
+          uv run --project services/yt-dlp --frozen yt-dlp \
+            --no-playlist \
+            --write-info-json \
+            --merge-output-format mp4 \
+            -S "res:1080" \
+            -o "output/reference/reference.%(ext)s" \
+            "$REFERENCE_URL"
+
+          VIDEO="$(find output/reference -maxdepth 1 -type f \
+            \( -name '*.mp4' -o -name '*.mov' -o -name '*.webm' -o -name '*.mkv' \) \
+            | head -n 1)"
+          if [ -z "$VIDEO" ]; then
+            echo "yt-dlp completed but no video file was found" >&2
+            exit 1
+          fi
+
+          if [ "$VIDEO" != "output/reference/reference.mp4" ]; then
+            ffmpeg -y -i "$VIDEO" \
+              -c:v libx264 -preset fast -crf 18 \
+              -c:a aac -b:a 160k \
+              -movflags +faststart \
+              output/reference/reference.mp4
+          fi
+
+          ffprobe -v error \
+            -show_entries format=duration,size,bit_rate:stream=index,codec_name,codec_type,width,height,r_frame_rate \
+            -of json output/reference/reference.mp4 \
+            > output/reference/ffprobe.json
+
+          ffmpeg -y -i output/reference/reference.mp4 \
+            -vf "fps=2,scale=720:-2" \
+            -q:v 3 output/frames/frame_%04d.jpg
+
+          ls -lh output/reference
+          echo "Extracted $(find output/frames -type f -name '*.jpg' | wc -l) analysis frames"
+
+      - name: Upload reference artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-${{ steps.request.outputs.job_id }}
+          path: |
+            ${{ steps.request.outputs.request_file }}
+            output/reference/
+            output/frames/
+          if-no-files-found: error
+          retention-days: 14
