@@ -1,0 +1,23 @@
+{
+  "format": "hypit.runtime-local@1",
+  "dataRoot": ".hypit/runtimes/ci",
+  "credentials": {},
+  "endpoints": {
+    "media.local": {
+      "use": "@hypit/provider-media-local",
+      "config": {
+        "defaultConcurrency": 2
+      }
+    },
+    "hyperframes.local": {
+      "use": "@hypit/provider-hyperframes-local",
+      "config": {
+        "workers": 2,
+        "defaultConcurrency": 1,
+        "browserCapacity": 2,
+        "browserGpu": "software"
+      }
+    }
+  },
+  "bindings": {}
+}
