@@ -1,0 +1,162 @@
+name: Hypit Video Factory
+
+on:
+  workflow_dispatch:
+    inputs:
+      production_dir:
+        description: "Prepared Hypit production directory"
+        required: true
+        default: "examples/semantic-composition"
+        type: string
+      author_file:
+        description: "Author source file inside production_dir"
+        required: true
+        default: "chat.svml"
+        type: string
+      run_file:
+        description: "Run source file inside production_dir"
+        required: true
+        default: "chat.svrun"
+        type: string
+      runtime_file:
+        description: "Runtime profile inside production_dir"
+        required: true
+        default: "hypit.runtime.ci.json"
+        type: string
+      output_name:
+        description: "Public Hypit output to export"
+        required: true
+        default: "final.video"
+        type: string
+      title:
+        description: "Human-readable build title"
+        required: true
+        default: "github-actions-video"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/video-factory.yml"
+      - "examples/semantic-composition/hypit.runtime.ci.json"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hypit-video-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PRODUCTION_DIR: ${{ inputs.production_dir || 'examples/semantic-composition' }}
+      AUTHOR_FILE: ${{ inputs.author_file || 'chat.svml' }}
+      RUN_FILE: ${{ inputs.run_file || 'chat.svrun' }}
+      RUNTIME_FILE: ${{ inputs.runtime_file || 'hypit.runtime.ci.json' }}
+      OUTPUT_NAME: ${{ inputs.output_name || 'final.video' }}
+      BUILD_TITLE: ${{ inputs.title || 'github-actions-smoke-test' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.15.0
+          cache: pnpm
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+
+      - name: Install repository dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build public Hypit types
+        run: pnpm build:public-types
+
+      - name: Build zero-cost demo component
+        if: env.PRODUCTION_DIR == 'examples/semantic-composition'
+        run: pnpm --filter @example/chat-scene build
+
+      - name: Prepare output directory
+        run: mkdir -p output
+
+      - name: Validate author source
+        run: |
+          node bin/hypit.mjs check "$PRODUCTION_DIR/$AUTHOR_FILE" \
+            --workspace "$PRODUCTION_DIR" | tee output/check.txt
+
+      - name: Prepare local runtime
+        run: |
+          node bin/hypit.mjs runtime up \
+            --workspace "$PRODUCTION_DIR" \
+            --runtime "$PRODUCTION_DIR/$RUNTIME_FILE"
+
+      - name: Plan build
+        run: |
+          node bin/hypit.mjs plan "$PRODUCTION_DIR/$RUN_FILE" \
+            --workspace "$PRODUCTION_DIR" \
+            --runtime "$PRODUCTION_DIR/$RUNTIME_FILE" | tee output/plan.txt
+
+      - name: Render video
+        run: |
+          set -o pipefail
+          node bin/hypit.mjs build "$PRODUCTION_DIR/$RUN_FILE" \
+            --workspace "$PRODUCTION_DIR" \
+            --runtime "$PRODUCTION_DIR/$RUNTIME_FILE" \
+            --title "$BUILD_TITLE" \
+            --follow | tee output/build.txt
+
+      - name: Export final video
+        id: export
+        run: |
+          RESULT_JSON="$(find "$PRODUCTION_DIR/.hypit/results" -type f -name result.json -printf '%T@ %p\n' \
+            | sort -nr | head -n 1 | cut -d' ' -f2-)"
+          if [ -z "$RESULT_JSON" ]; then
+            echo "No Hypit result.json found" >&2
+            exit 1
+          fi
+          BUILD_ID="$(basename "$(dirname "$RESULT_JSON")")"
+          echo "build_id=$BUILD_ID" >> "$GITHUB_OUTPUT"
+          echo "Hypit build: $BUILD_ID"
+          node bin/hypit.mjs get "$BUILD_ID" \
+            --output "$OUTPUT_NAME" \
+            --to output/final.mp4 \
+            --workspace "$PRODUCTION_DIR"
+          test -s output/final.mp4
+          ffprobe -v error -show_entries format=duration,size \
+            -of default=noprint_wrappers=1 output/final.mp4 | tee output/ffprobe.txt
+
+      - name: Stop local runtime
+        if: always()
+        continue-on-error: true
+        run: |
+          node bin/hypit.mjs runtime down \
+            --workspace "$PRODUCTION_DIR" \
+            --runtime "$PRODUCTION_DIR/$RUNTIME_FILE"
+
+      - name: Upload video artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hypit-video-${{ steps.export.outputs.build_id }}
+          path: |
+            output/final.mp4
+            output/check.txt
+            output/plan.txt
+            output/build.txt
+            output/ffprobe.txt
+          if-no-files-found: error
+          retention-days: 14
