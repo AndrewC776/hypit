@@ -50,9 +50,9 @@ test("::1 IPv6 loopback is blocked", () => {
 
 test("10.0.0.0/8 is blocked", () => {
   blockedAs("10.0.0.1", "ADDRESS_PRIVATE");
-  blockedAs("10.10.0.3", "ADDRESS_PRIVATE");
+  blockedAs("10.0.0.5", "ADDRESS_PRIVATE");
   blockedAs("10.255.255.254", "ADDRESS_PRIVATE");
-  blockedAs("::ffff:10.10.0.3", "ADDRESS_PRIVATE");
+  blockedAs("::ffff:10.0.0.5", "ADDRESS_PRIVATE");
 });
 
 test("172.16.0.0/12 is blocked and its neighbours are not", () => {
@@ -183,7 +183,7 @@ test("an allow-listed host that resolves publicly is accepted", async () => {
 });
 
 test("DNS rebinding is caught: an allow-listed host resolving inward is rejected", async () => {
-  for (const address of ["127.0.0.1", "10.10.0.3", "169.254.169.254", "::1", "fd00::1", "192.168.1.1"]) {
+  for (const address of ["127.0.0.1", "10.0.0.5", "169.254.169.254", "::1", "fd00::1", "192.168.1.1"]) {
     const result = await checkReferenceUrl(REFERENCE, { allowedHosts: TIKTOK, lookup: resolvesTo(address) });
     assert.equal(result.ok, false, `${address} should be rejected`);
   }

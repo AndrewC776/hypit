@@ -103,7 +103,7 @@ test("a clone reference over plain http is refused", async () => {
 });
 
 test("a clone reference whose host resolves to a private address is refused", async () => {
-  const resolver = recordingLookup(["10.10.0.3"]);
+  const resolver = recordingLookup(["10.0.0.5"]);
   await withHarness({ env: REGISTERED, dependencies: { lookup: resolver.lookup } }, async (harness) => {
     const response = await harness.request("/v1/jobs", postJson(cloneBody(REFERENCE)));
     assert.equal(response.status, 400);

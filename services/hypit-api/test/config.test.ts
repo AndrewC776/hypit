@@ -45,7 +45,7 @@ test("the defaults bind loopback 8787 with a 256 KiB body cap", () => {
 });
 
 test("binding a host that is not loopback is a startup error", () => {
-  for (const host of ["0.0.0.0", "10.10.0.3", "192.168.1.10", "::", "8.8.8.8", "example.com", "", "0"]) {
+  for (const host of ["0.0.0.0", "10.0.0.5", "192.168.1.10", "::", "8.8.8.8", "example.com", "", "0"]) {
     const error = configErrorOf({ HYPIT_API_HOST: host });
     assert.equal(error.code, "API_HOST_NOT_LOOPBACK", `${host} should be refused`);
     assert.equal(error.variable, "HYPIT_API_HOST");

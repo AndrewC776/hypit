@@ -90,7 +90,7 @@ test("the ingress gate admits loopback peers and nobody else while it is armed",
   for (const peer of ["127.0.0.1", "::1", "::ffff:127.0.0.1"]) {
     assert.equal(ingressAllowed(peer, true), true, peer);
   }
-  for (const peer of ["10.10.0.3", "192.168.1.9", "8.8.8.8", "2606:4700::1111", undefined]) {
+  for (const peer of ["10.0.0.5", "192.168.1.9", "8.8.8.8", "2606:4700::1111", undefined]) {
     assert.equal(ingressAllowed(peer, true), false, String(peer));
     // Disarmed, the same peer is admitted: the flag is the only thing standing between them.
     assert.equal(ingressAllowed(peer, false), true, String(peer));
@@ -99,7 +99,7 @@ test("the ingress gate admits loopback peers and nobody else while it is armed",
 
 test("the server refuses to bind anything but loopback", async () => {
   await withHarness({}, async (harness) => {
-    for (const host of ["0.0.0.0", "10.10.0.3", "::"]) {
+    for (const host of ["0.0.0.0", "10.0.0.5", "::"]) {
       await assert.rejects(() => listen(harness.server, host, 0), /loopback/u, host);
     }
   });

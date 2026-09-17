@@ -1,6 +1,6 @@
 # P0 credential exposure — audit, containment, and what only you can do
 
-Host `10.10.0.3` (macOS 26.1, user `operator`), audited read-only 2026-09-17. No secret value appears
+The deployment host (macOS 26.1), audited read-only 2026-09-17. No secret value appears
 in this document; every finding is described by name, length and first four characters only.
 
 ## Standing rule
