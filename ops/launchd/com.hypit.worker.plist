@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  TEMPLATE. Every __TOKEN__ below is a host-specific absolute path that must be substituted
+  before this file is installed; ops/launchd/README.md lists them and the substitution command.
+
+  A plist is world readable and `launchctl print` echoes the whole job description, so no
+  credential may ever appear in ProgramArguments or EnvironmentVariables. Everything here is a
+  path or a policy flag. Provider credentials are resolved by the Runtime Profile through its own
+  CredentialStore, so this job passes the profile's path and never a secret.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hypit.worker</string>
+
+  <!--
+    ProgramArguments[0] is absolute on purpose. launchd execs the program directly and does not
+    perform a PATH search for it, so the PATH set below governs what the job's children find and
+    never how the job itself is located.
+
+    node:sqlite prints "SQLite is an experimental feature" on stderr on every open. The worker
+    reopens the job store on every restart, so left alone that warning would be the most frequent
+    line in the error log and would bury the failures the log exists to show.
+  -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE_EXECUTABLE__</string>
+    <string>--disable-warning=ExperimentalWarning</string>
+    <string>--import</string>
+    <string>tsx</string>
+    <string>__CONTROL_PLANE_CHECKOUT__/services/hypit-worker/src/main.ts</string>
+  </array>
+
+  <!--
+    The checkout root, not the service directory: node resolves the bare `tsx` specifier passed to
+    the import flag against the working directory, and only the root holds node_modules. It is also not
+    any job's project directory — the worker builds in a per-job copy under __WORK_ROOT__/jobs and
+    never inside a checkout.
+  -->
+  <key>WorkingDirectory</key>
+  <string>__CONTROL_PLANE_CHECKOUT__</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!--
+      This is the job that actually spawns the Hypit CLI, which in turn resolves ffprobe, ffmpeg
+      and uv from PATH. launchd hands a job a minimal PATH that omits Homebrew, so a worker started
+      by launchd would fail on exactly the tools that work in an operator shell unless PATH is
+      stated here.
+    -->
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+
+    <key>HYPIT_STATE_DB</key>
+    <string>__WORK_ROOT__/state/jobs.sqlite3</string>
+
+    <!-- Per-job workspaces are created under this root as <jobs root>/<job_id>/, mode 0700. -->
+    <key>HYPIT_JOBS_ROOT</key>
+    <string>__WORK_ROOT__/jobs</string>
+
+    <!-- One shared profile, therefore one dataRoot and one long-lived Hypit Worker for every job. -->
+    <key>HYPIT_RUNTIME_PROFILE</key>
+    <string>__WORK_ROOT__/baseline/hypit.runtime.json</string>
+
+    <key>HYPIT_CLI_EXECUTABLE</key>
+    <string>__HYPIT_EXECUTABLE__</string>
+
+    <!--
+      The allowlist that maps a request's project KEY to an absolute directory. The API accepts a
+      key and never a path, so this file is the only place a caller-reachable name becomes a
+      filesystem location, and it is what makes path traversal unreachable rather than merely
+      filtered.
+    -->
+    <key>HYPIT_PROJECT_REGISTRY</key>
+    <string>__WORK_ROOT__/config/project-registry.json</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <!--
+    Ten seconds between respawns. launchd's own floor is already 10s; naming it documents that a
+    crash loop is meant to be visible in the log as repeated starts rather than hidden behind a
+    process that appears to be up.
+  -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <!--
+    launchd sends SIGTERM and follows with SIGKILL after this many seconds. The worker's shutdown
+    path has to commit the transaction it is inside and write a final heartbeat; killed before
+    that, the job it held waits out the full stale-heartbeat window before anything reclaims it.
+    The default 20s is a tight budget for a commit that is contending on the store, so allow more.
+  -->
+  <key>ExitTimeOut</key>
+  <integer>45</integer>
+
+  <!-- launchd creates these files but not their directory; see the README preflight. -->
+  <key>StandardOutPath</key>
+  <string>__WORK_ROOT__/logs/com.hypit.worker.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__WORK_ROOT__/logs/com.hypit.worker.err.log</string>
+</dict>
+</plist>

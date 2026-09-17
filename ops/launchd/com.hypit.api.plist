@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  TEMPLATE. Every __TOKEN__ below is a host-specific absolute path that must be substituted
+  before this file is installed; ops/launchd/README.md lists them and the substitution command.
+
+  A plist is world readable and `launchctl print` echoes the whole job description, so no
+  credential may ever appear in ProgramArguments or EnvironmentVariables. Everything here is a
+  path, a port or a policy flag. Secrets are read at startup from the macOS Keychain through
+  @hypit/credential-store-os, which is why this runs as a per-user LaunchAgent and not as a root
+  LaunchDaemon: a daemon running as root cannot open the operator's login keychain.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.hypit.api</string>
+
+  <!--
+    ProgramArguments[0] is absolute on purpose. launchd execs the program directly and does not
+    perform a PATH search for it, so the PATH set below governs what the job's children find and
+    never how the job itself is located.
+
+    node:sqlite prints "SQLite is an experimental feature" on stderr on every open. Left alone it
+    would be the first line of every restart in the error log and would train the operator to
+    ignore that file, so it is disabled at the process boundary rather than filtered downstream.
+  -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE_EXECUTABLE__</string>
+    <string>--disable-warning=ExperimentalWarning</string>
+    <string>--import</string>
+    <string>tsx</string>
+    <string>__CONTROL_PLANE_CHECKOUT__/services/hypit-api/src/main.ts</string>
+  </array>
+
+  <!--
+    The checkout root, not the service directory: node resolves the bare `tsx` specifier passed to
+    the import flag against the working directory, and only the root holds node_modules.
+  -->
+  <key>WorkingDirectory</key>
+  <string>__CONTROL_PLANE_CHECKOUT__</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!--
+      launchd hands a job a minimal PATH that omits Homebrew, and the Hypit CLI this service
+      reports on resolves ffprobe, ffmpeg and uv from PATH. Stating it explicitly is what keeps a
+      service start behaving like an operator shell start.
+    -->
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+
+    <key>HYPIT_API_HOST</key>
+    <string>127.0.0.1</string>
+    <key>HYPIT_API_PORT</key>
+    <string>8787</string>
+
+    <key>HYPIT_STATE_DB</key>
+    <string>__WORK_ROOT__/state/jobs.sqlite3</string>
+
+    <!-- /ready reports the adapter executable as present or missing, so the API needs its path too. -->
+    <!--
+      Either inline JSON or the path of a JSON file mapping a project key to an absolute path. The
+      API resolves a prepared_run request's project through this registry and never accepts a
+      filesystem path from a caller, which is what keeps path traversal out of the request shape
+      rather than merely filtered out of it.
+    -->
+    <key>HYPIT_PROJECT_REGISTRY</key>
+    <string>__WORK_ROOT__/config/project-registry.json</string>
+
+    <key>HYPIT_CLI_EXECUTABLE</key>
+    <string>__HYPIT_EXECUTABLE__</string>
+
+    <!--
+      Stated rather than left to the default: this flag gates every externally reachable path and
+      stays true until the two exposed credentials have actually been rotated by the account owner.
+      An operator reading `launchctl print` should see the posture without consulting the source.
+    -->
+    <key>SECURITY_BLOCKED_EXTERNAL_INGRESS</key>
+    <string>true</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+
+  <!--
+    Ten seconds between respawns. launchd's own floor is already 10s; naming it documents that a
+    crash loop is meant to be visible in the log as repeated starts rather than hidden behind a
+    process that appears to be up.
+  -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <!-- launchd creates these files but not their directory; see the README preflight. -->
+  <key>StandardOutPath</key>
+  <string>__WORK_ROOT__/logs/com.hypit.api.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__WORK_ROOT__/logs/com.hypit.api.err.log</string>
+</dict>
+</plist>

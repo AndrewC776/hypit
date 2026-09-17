@@ -1713,6 +1713,15 @@ importers:
         specifier: workspace:*
         version: link:../typography-track
 
+  packages/hypit-adapter:
+    dependencies:
+      '@hypit/job-core':
+        specifier: workspace:*
+        version: link:../job-core
+      '@hypit/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
   packages/image-compose:
     dependencies:
       '@hypit/artifact':
@@ -1799,6 +1808,18 @@ importers:
       '@hypit/timeline':
         specifier: workspace:*
         version: link:../timeline
+
+  packages/job-core:
+    dependencies:
+      '@hypit/protocol':
+        specifier: workspace:*
+        version: link:../protocol
+
+  packages/job-store-sqlite:
+    dependencies:
+      '@hypit/job-core':
+        specifier: workspace:*
+        version: link:../job-core
 
   packages/markup:
     dependencies:

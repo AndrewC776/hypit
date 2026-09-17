@@ -20,6 +20,8 @@
   },
   "include": [
     "packages/**/*.ts",
+    "services/*/src/**/*.ts",
+    "services/*/test/**/*.ts",
     "examples/*/packages/*/src/**/*.ts",
     "examples/*/packages/*/test/**/*.ts"
   ],
