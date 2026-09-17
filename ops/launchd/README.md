@@ -42,7 +42,25 @@ services down until someone logs in, and the reboot acceptance check below will 
 | `__NODE_EXECUTABLE__` | Absolute path to the `node` binary | `/opt/homebrew/bin/node` |
 | `__CONTROL_PLANE_CHECKOUT__` | The control-plane checkout root | `~/hypit-work/control-plane/hypit` |
 | `__WORK_ROOT__` | Runtime state root: state, jobs, logs, baseline profile, config | `~/hypit-work` |
-| `__HYPIT_EXECUTABLE__` | The pinned production Hypit CLI | `/opt/homebrew/bin/hypit` |
+| `__HYPIT_EXECUTABLE__` | The Hypit CLI the worker drives | `~/hypit-work/control-plane/hypit/hypit` |
+
+### Why not `/opt/homebrew/bin/hypit`
+
+That symlink points into `~/Documents/github/hypit`, and `~/Documents` is protected by TCC. A
+LaunchAgent holds no grant there, so the first spawn blocks on a consent prompt nobody can answer:
+the call hangs for the adapter's full 300 s timeout, the worker exits, launchd restarts it, and the
+result is a respawn loop whose logs say only "did not finish within 300000 ms". Run the same command
+over SSH and it succeeds in five seconds, because that session is granted — which is exactly why
+this failure does not appear during manual testing.
+
+Measured on this host: a LaunchAgent invoking `/opt/homebrew/bin/hypit` fails with
+`Operation not permitted` (rc 126); the same job invoking
+`~/hypit-work/control-plane/hypit/hypit` returns `rc=0` in 5 s with `2/2` programs ready.
+
+The control-plane checkout is a complete Hypit distribution living outside any TCC-protected
+directory, and `git diff dcce22a -- packages/cli packages/video-cli bin` is empty, so it is the same
+CLI by content as the pinned one. The alternative — granting Full Disk Access to `node` — is a much
+broader permission than this needs.
 
 Expand `~` yourself. launchd does no tilde expansion and no shell expansion of any kind; a literal
 `~` in a plist is a directory named `~`.

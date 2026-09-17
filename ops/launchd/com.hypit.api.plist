@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  TEMPLATE. Every __TOKEN__ below is a host-specific absolute path that must be substituted
+  TEMPLATE. Every placeholder below is a host-specific absolute path that must be substituted
   before this file is installed; ops/launchd/README.md lists them and the substitution command.
 
   A plist is world readable and `launchctl print` echoes the whole job description, so no
