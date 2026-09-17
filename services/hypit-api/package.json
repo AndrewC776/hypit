@@ -1,0 +1,14 @@
+{
+  "name": "@hypit/hypit-api",
+  "version": "0.0.0-dev",
+  "license": "SEE LICENSE IN LICENSE",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@hypit/job-core": "workspace:*",
+    "@hypit/job-store-sqlite": "workspace:*"
+  }
+}
